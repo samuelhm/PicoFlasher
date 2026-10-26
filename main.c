@@ -23,6 +23,8 @@
 #include "hardware/clocks.h"
 #include "pico/stdlib.h"
 #include "pico/bootrom.h"
+#include "hardware/sync.h"
+#include "hardware/structs/sio.h"
 
 #include "tusb.h"
 #include "xbox.h"
@@ -31,7 +33,38 @@
 #include "pins.h"
 #include "mmc_defs.h"
 
-#define LED_PIN 25
+// The RP2040-Zero has no plain LED, only a WS2812 addressable LED on GP16.
+#define WS2812_PIN 16
+
+static void __not_in_flash_func(led_write)(bool on)
+{
+	uint32_t grb = on ? 0x00200000u : 0x00000000u; // green / off
+	uint32_t mask = 1u << WS2812_PIN;
+
+	// The WS2812 protocol is timing critical, so keep interrupts disabled
+	// for the ~30us the 24 bit frame takes.
+	uint32_t irq_state = save_and_disable_interrupts();
+
+	for (int bit = 23; bit >= 0; --bit)
+	{
+		if (grb & (1u << bit))
+		{
+			sio_hw->gpio_set = mask;
+			busy_wait_at_least_cycles(220); // ~0.8us
+			sio_hw->gpio_clr = mask;
+			busy_wait_at_least_cycles(130); // ~0.5us
+		}
+		else
+		{
+			sio_hw->gpio_set = mask;
+			busy_wait_at_least_cycles(120); // ~0.45us
+			sio_hw->gpio_clr = mask;
+			busy_wait_at_least_cycles(230); // ~0.85us
+		}
+	}
+
+	restore_interrupts(irq_state);
+}
 
 // Invoked when device is mounted
 void tud_mount_cb(void)
@@ -85,8 +118,8 @@ void led_blink(void)
 
 	start_ms = now;
 
-	gpio_put(LED_PIN, led_state);
-	led_state = 1 - led_state;
+	led_state = !led_state;
+	led_write(led_state);
 }
 
 #define GET_VERSION 0x00
@@ -380,8 +413,9 @@ int main(void)
 
 	stdio_init_all();
 
-	gpio_init(LED_PIN);
-	gpio_set_dir(LED_PIN, GPIO_OUT);
+	gpio_init(WS2812_PIN);
+	gpio_set_dir(WS2812_PIN, GPIO_OUT);
+	led_write(false);
 
 	xbox_init();
 
