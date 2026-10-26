@@ -18,7 +18,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "bsp/board.h"
 #include "hardware/vreg.h"
 #include "hardware/clocks.h"
 #include "pico/stdlib.h"
