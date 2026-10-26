@@ -351,8 +351,10 @@ void tud_cdc_tx_complete_cb(uint8_t itf)
 
 int main(void)
 {
-	vreg_set_voltage(VREG_VOLTAGE_1_30);
-	set_sys_clock_khz(266000, true);
+	// 200 MHz keeps the QSPI flash within spec on RP2040-Zero clones; at
+	// 266 MHz some boards hang before USB is initialised.
+	vreg_set_voltage(VREG_VOLTAGE_1_20);
+	set_sys_clock_khz(200000, true);
 
 	uint32_t freq = clock_get_hz(clk_sys);
 	clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLK_SYS, freq, freq);
