@@ -23,8 +23,6 @@
 #include "hardware/clocks.h"
 #include "pico/stdlib.h"
 #include "pico/bootrom.h"
-#include "hardware/sync.h"
-#include "hardware/structs/sio.h"
 
 #include "tusb.h"
 #include "xbox.h"
@@ -32,39 +30,6 @@
 #include "sdio.h"
 #include "pins.h"
 #include "mmc_defs.h"
-
-// The RP2040-Zero has no plain LED, only a WS2812 addressable LED on GP16.
-#define WS2812_PIN 16
-
-static void __not_in_flash_func(led_write)(bool on)
-{
-	uint32_t grb = on ? 0x00200000u : 0x00000000u; // green / off
-	uint32_t mask = 1u << WS2812_PIN;
-
-	// The WS2812 protocol is timing critical, so keep interrupts disabled
-	// for the ~30us the 24 bit frame takes.
-	uint32_t irq_state = save_and_disable_interrupts();
-
-	for (int bit = 23; bit >= 0; --bit)
-	{
-		if (grb & (1u << bit))
-		{
-			sio_hw->gpio_set = mask;
-			busy_wait_at_least_cycles(220); // ~0.8us
-			sio_hw->gpio_clr = mask;
-			busy_wait_at_least_cycles(130); // ~0.5us
-		}
-		else
-		{
-			sio_hw->gpio_set = mask;
-			busy_wait_at_least_cycles(120); // ~0.45us
-			sio_hw->gpio_clr = mask;
-			busy_wait_at_least_cycles(230); // ~0.85us
-		}
-	}
-
-	restore_interrupts(irq_state);
-}
 
 // Invoked when device is mounted
 void tud_mount_cb(void)
@@ -104,22 +69,6 @@ void tud_resume_cb(void)
 	uint32_t flash_config = xbox_get_flash_config();
 
 	printf("flash_config: %x\n", flash_config);
-}
-
-void led_blink(void)
-{
-	static uint32_t start_ms = 0;
-	static bool led_state = false;
-
-	uint32_t now = board_millis();
-
-	if (now - start_ms < 50)
-		return;
-
-	start_ms = now;
-
-	led_state = !led_state;
-	led_write(led_state);
 }
 
 #define GET_VERSION 0x00
@@ -214,7 +163,6 @@ void stream()
 void tud_cdc_rx_cb(uint8_t itf)
 {
 	(void)itf;
-	led_blink();
 
 	uint32_t avilable_data = tud_cdc_available();
 
@@ -400,7 +348,6 @@ void tud_cdc_rx_cb(uint8_t itf)
 void tud_cdc_tx_complete_cb(uint8_t itf)
 {
 	(void)itf;
-	led_blink();
 }
 
 int main(void)
@@ -412,10 +359,6 @@ int main(void)
 	clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLK_SYS, freq, freq);
 
 	stdio_init_all();
-
-	gpio_init(WS2812_PIN);
-	gpio_set_dir(WS2812_PIN, GPIO_OUT);
-	led_write(false);
 
 	xbox_init();
 

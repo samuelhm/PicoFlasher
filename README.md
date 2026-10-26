@@ -7,7 +7,7 @@ Open source XBOX 360 NAND flasher firmware for Raspberry Pi Pico / RP2040-Zero
 ## Wiring:
 
 This pinout targets the **Waveshare RP2040-Zero** (GPIO16–GPIO25 are not
-available on its headers and GPIO16 drives the onboard WS2812 LED).
+available on its headers; the onboard WS2812 on GPIO16 is left unused).
 
 ### Nand Flash
 | RP2040-Zero | Xbox |
