@@ -22,8 +22,6 @@
 #include "hardware/gpio.h"
 #include "hardware/dma.h"
 #include "sdio.pio.h"
-#include "crc7.h"
-#include "crc-itu-t.h"
 #include "pico/binary_info.h"
 #include "pins.h"
 #include "mmc_defs.h"
@@ -42,6 +40,17 @@ const int sd_pio_dma_channel = 8;
 #else
 #define sd_debug(format, args...) (void)0
 #endif
+
+// CRC-7 for SD/MMC commands. The 0x12 polynomial is the standard CRC-7
+// polynomial (0x09) pre-shifted one bit to the left, so the end bit can be
+// added afterwards with `crc |= 1` (SD/MMC wire format).
+static inline uint8_t sd_crc7(uint8_t crc, uint8_t byte)
+{
+	uint8_t c = crc ^ byte;
+	for (int i = 0; i < 8; i++)
+		c = (c & 0x80) ? (uint8_t)((c << 1) ^ 0x12) : (uint8_t)(c << 1);
+	return c;
+}
 
 static inline uint32_t sd_pio_cmd(uint cmd, uint32_t param)
 {
@@ -314,11 +323,11 @@ int __noinline sd_command(uint8_t cmd, uint32_t arg, void *response)
 
 	cmd |= 0x40;
 	uint8_t crc = 0;
-	crc = crc7_table[crc ^ cmd];
-	crc = crc7_table[crc ^ b0];
-	crc = crc7_table[crc ^ b1];
-	crc = crc7_table[crc ^ b2];
-	crc = crc7_table[crc ^ b3];
+	crc = sd_crc7(crc, cmd);
+	crc = sd_crc7(crc, b0);
+	crc = sd_crc7(crc, b1);
+	crc = sd_crc7(crc, b2);
+	crc = sd_crc7(crc, b3);
 	crc |= 1;
 
 	uint32_t high = (cmd << 24) | (b0 << 16) | (b1 << 8) | b2;
@@ -388,11 +397,11 @@ int __noinline sd_command(uint8_t cmd, uint32_t arg, void *response)
 					printf("tsk\n");
 				}
 
-				uint8_t crc = crc7_table[receive_buf[0]];
-				crc = crc7_table[crc ^ receive_buf[1]];
-				crc = crc7_table[crc ^ receive_buf[2]];
-				crc = crc7_table[crc ^ receive_buf[3]];
-				crc = crc7_table[crc ^ receive_buf[4]];
+				uint8_t crc = sd_crc7(0, receive_buf[0]);
+				crc = sd_crc7(crc, receive_buf[1]);
+				crc = sd_crc7(crc, receive_buf[2]);
+				crc = sd_crc7(crc, receive_buf[3]);
+				crc = sd_crc7(crc, receive_buf[4]);
 				if ((crc | 1u) != receive_buf[5])
 				{
 					panic("bad crc %02x != %02x\n", crc | 1u, receive_buf[5]);
